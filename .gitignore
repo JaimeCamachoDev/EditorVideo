@@ -1,0 +1,6 @@
+# Binarios: se descargan / generan con instalar.ps1
+ffmpeg/
+EditorVideo.exe
+
+# Preferencias locales
+config.json

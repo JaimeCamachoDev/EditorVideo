@@ -1,0 +1,1027 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Editor de Vídeo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='14' width='56' height='44' rx='4' fill='%234f8cff'/%3E%3Crect x='4' y='6' width='56' height='10' fill='%23161920'/%3E%3Cpath d='M26 25v24l18-12z' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0e1014;--panel:#161920;--panel2:#1d212a;--line:#2a2f3b;--text:#e7e9ef;--muted:#8a92a5;
+  --accent:#4f8cff;--accent-h:#6b9fff;--sel:rgba(79,140,255,.22);--shade:rgba(0,0,0,.6);
+  --danger:#ff6161;--ok:#3ecf8e;--warn:#f5b74a;--rec:#ff4d4d;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.45 "Segoe UI",system-ui,sans-serif;overflow:hidden}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+header{display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--panel);height:52px}
+.brand{font-weight:650;font-size:15px;white-space:nowrap}
+.grow{flex:1}
+.fileinfo{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;user-select:none;white-space:nowrap;text-decoration:none}
+.btn:hover:not(:disabled){border-color:#3b4252;background:#232834}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.primary:hover:not(:disabled){background:var(--accent-h)}
+.btn.danger{color:var(--danger)}
+.btn.sm{padding:4px 10px;font-size:13px}
+.btn.on{border-color:var(--accent);color:var(--accent-h)}
+main{display:grid;grid-template-columns:280px minmax(0,1fr) 350px;height:calc(100% - 52px)}
+main.norec{grid-template-columns:0 minmax(0,1fr) 350px}
+main.norec #recs{display:none}
+/* ---- grabaciones ---- */
+#recs{border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+#recs .head{padding:12px 14px 8px;display:flex;align-items:center;gap:8px}
+#recs h3{margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:600;flex:1}
+#recList{overflow:auto;flex:1;padding:0 8px 12px}
+.rec{display:flex;gap:10px;padding:7px;border-radius:8px;cursor:pointer;border:1px solid transparent;align-items:center}
+.rec:hover{background:var(--panel2)}
+.rec.active{background:var(--panel2);border-color:var(--accent)}
+.rec.busy{opacity:.6;cursor:default}
+.rec .th{width:96px;height:54px;flex:none;border-radius:5px;background:#000 center/cover no-repeat;position:relative;overflow:hidden}
+.rec .th img{width:100%;height:100%;object-fit:cover;display:block}
+.rec .badge{position:absolute;left:4px;top:4px;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--accent);color:#fff}
+.rec .badge.live{background:var(--rec)}
+.rec .t{min-width:0;flex:1}
+.rec .n{font-size:13px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.rec .m{font-size:11px;color:var(--muted)}
+.recempty{color:var(--muted);font-size:13px;padding:14px}
+/* ---- escenario ---- */
+.stage{display:flex;flex-direction:column;padding:12px 16px;gap:10px;min-width:0;min-height:0;overflow:auto}
+.viewer{position:relative;flex:1;min-height:240px;background:#000;border-radius:10px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.viewer.drag{outline:2px dashed var(--accent);outline-offset:-8px}
+.viewer.drag::after{content:"Suelta aquí el vídeo (o un audio para cambiar la pista)";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(14,16,20,.85);font-size:16px}
+.viewer video,.viewer img.still{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.empty{text-align:center;color:var(--muted);padding:30px;cursor:pointer;max-width:460px}
+.empty b{color:var(--text)}
+.empty .big{font-size:40px;margin-bottom:8px;opacity:.6}
+.empty small{display:block;margin-top:10px;font-size:12px;line-height:1.6}
+.notice{position:absolute;left:12px;right:12px;bottom:12px;background:rgba(0,0,0,.82);padding:8px 12px;border-radius:8px;color:var(--warn);font-size:13px;text-align:center;z-index:2}
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;background:rgba(14,16,20,.78);text-align:center;padding:20px;z-index:3}
+.spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.transport{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.time{font-variant-numeric:tabular-nums;color:var(--muted)}
+.time b{color:var(--text);font-weight:500}
+.timeline{position:relative;height:64px;flex:none;border-radius:8px;background:var(--panel2);border:1px solid var(--line);cursor:pointer;touch-action:none;overflow:hidden;user-select:none}
+.timeline.off{cursor:default;opacity:.5}
+.thumbs{position:absolute;inset:0;display:flex;opacity:.85}
+.thumbs img{flex:1 1 0;min-width:0;height:100%;object-fit:cover;pointer-events:none}
+.shade{position:absolute;top:0;bottom:0;background:var(--shade);pointer-events:none}
+.selbox{position:absolute;top:0;bottom:0;border:2px solid var(--accent);border-left-width:0;border-right-width:0;background:var(--sel);pointer-events:none}
+.handle{position:absolute;top:-2px;bottom:-2px;width:12px;background:var(--accent);cursor:ew-resize;pointer-events:auto;display:flex;align-items:center;justify-content:center}
+.handle::after{content:"";width:2px;height:22px;background:rgba(255,255,255,.8);border-radius:1px}
+.handle.l{left:0;border-radius:0 4px 4px 0}
+.handle.r{right:0;border-radius:4px 0 0 4px}
+.playhead{position:absolute;top:0;bottom:0;width:2px;background:#fff;box-shadow:0 0 4px rgba(0,0,0,.8);pointer-events:none}
+.hint{font-size:12px;color:var(--muted)}
+kbd{font:11px ui-monospace,Consolas,monospace;background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px}
+details.log summary{cursor:pointer;color:var(--muted);font-size:12px}
+details.log pre{margin:6px 0 0;max-height:200px;overflow:auto;background:#0a0b0e;border:1px solid var(--line);border-radius:6px;padding:8px;font:11px/1.4 ui-monospace,Consolas,monospace;color:#aeb5c4;white-space:pre-wrap;word-break:break-all}
+/* ---- panel derecho ---- */
+aside.side{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:4px 0 20px}
+.card{padding:13px 18px;border-bottom:1px solid var(--line)}
+.card h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:600}
+.row{display:flex;align-items:center;gap:8px;margin:8px 0}
+.row label.k{width:96px;flex:none;color:var(--muted);font-size:13px}
+.row .v{flex:1;min-width:0}
+input[type=text],input[type=number],select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:6px 8px;outline:none}
+input[type=text]:focus,input[type=number]:focus,select:focus{border-color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px}
+.seg label{flex:1;text-align:center;padding:5px 4px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--muted)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--accent);color:#fff}
+.check{display:flex;gap:8px;align-items:flex-start;cursor:pointer;margin:8px 0}
+.check input{margin-top:3px;accent-color:var(--accent)}
+.note{font-size:12px;color:var(--muted);margin-top:4px}
+.note.warn{color:var(--warn)}
+.dim{opacity:.4;pointer-events:none}
+.hidden{display:none!important}
+.val{width:44px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px;flex:none}
+.progress{height:8px;background:var(--panel2);border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+.progress div{height:100%;width:0;background:var(--accent);transition:width .2s}
+.status{font-size:13px;margin-top:6px;color:var(--muted);min-height:18px}
+.status.err{color:var(--danger)}
+.status.ok{color:var(--ok)}
+.result{margin-top:10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px}
+.result video,.result img,.result audio{width:100%;border-radius:6px;background:#000;max-height:170px;display:block}
+.result .meta{font-size:12px;color:var(--muted);margin:8px 0;word-break:break-all}
+.result .acts{display:flex;gap:6px;flex-wrap:wrap}
+.result .acts .btn{flex:1}
+.outdir{font-size:12px;color:var(--muted);word-break:break-all}
+.toast{position:fixed;right:16px;bottom:16px;background:var(--panel2);border:1px solid var(--accent);border-radius:10px;padding:10px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:10;max-width:420px}
+.fatal{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:20;padding:30px;text-align:center}
+@media (max-width:1100px){ main{grid-template-columns:0 minmax(0,1fr) 330px} #recs{display:none} }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">✂ Editor de Vídeo</div>
+  <button class="btn sm on" id="bRecs" title="Mostrar u ocultar tus grabaciones">▤ Grabaciones</button>
+  <div class="fileinfo grow" id="fileInfo"></div>
+  <button class="btn primary" id="bOpen">Abrir vídeo…</button>
+</header>
+
+<main id="main">
+  <aside id="recs">
+    <div class="head"><h3>Grabaciones recientes</h3><button class="btn sm" id="bRecRefresh" title="Actualizar">⟳</button></div>
+    <div id="recList"><div class="recempty">Buscando grabaciones…</div></div>
+  </aside>
+
+  <section class="stage">
+    <div class="viewer" id="viewer">
+      <div class="empty" id="empty">
+        <div class="big">🎬</div>
+        Elige una grabación de la izquierda, arrastra un vídeo aquí o <b>haz clic para abrirlo</b>.
+        <small>Las grabaciones de la Xbox Game Bar (<kbd>Win</kbd>+<kbd>Alt</kbd>+<kbd>R</kbd>) y de la Herramienta Recortes (<kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>) aparecen solas en la lista nada más terminar.</small>
+      </div>
+      <video id="vid" playsinline preload="auto" class="hidden"></video>
+      <img id="still" class="still hidden" alt="">
+      <div class="notice hidden" id="notice"></div>
+      <div class="overlay hidden" id="overlay"><div class="spinner"></div><div id="overlayMsg">Cargando vídeo…</div></div>
+    </div>
+
+    <div class="transport">
+      <button class="btn sm" id="bPlay" title="Reproducir / pausa (Espacio)">▶ Reproducir</button>
+      <button class="btn sm" id="bPlaySel" title="Reproducir solo la selección">▶ Selección</button>
+      <span class="time"><b id="tCur">00:00.00</b> / <span id="tDur">00:00.00</span></span>
+      <span class="grow"></span>
+      <button class="btn sm" id="bIn" title="Marcar inicio en la posición actual (I)">[ Inicio aquí</button>
+      <button class="btn sm" id="bOut" title="Marcar fin en la posición actual (O)">Fin aquí ]</button>
+    </div>
+
+    <div class="timeline off" id="timeline">
+      <div class="thumbs" id="thumbs"></div>
+      <div class="shade" id="shadeL"></div>
+      <div class="shade" id="shadeR"></div>
+      <div class="selbox" id="selBox"><div class="handle l" id="hIn" title="Arrastra para cambiar el inicio"></div><div class="handle r" id="hOut" title="Arrastra para cambiar el fin"></div></div>
+      <div class="playhead" id="playhead"></div>
+    </div>
+    <div class="hint"><kbd>Espacio</kbd> reproducir · <kbd>I</kbd>/<kbd>O</kbd> marcar inicio/fin · <kbd>←</kbd><kbd>→</kbd> 1 fotograma · <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> 1 segundo · <kbd>Ctrl</kbd>+<kbd>E</kbd> exportar</div>
+
+    <details class="log"><summary>Registro de FFmpeg (para diagnosticar errores)</summary><pre id="log"></pre></details>
+  </section>
+
+  <aside class="side">
+    <div class="card" id="cardCut">
+      <h3>Recorte</h3>
+      <div class="row"><label class="k" for="inT">Inicio</label><input class="v" type="text" id="inT" value="00:00.00" title="Formato mm:ss.cc o segundos"></div>
+      <div class="row"><label class="k" for="outT">Fin</label><input class="v" type="text" id="outT" value="00:00.00" title="Formato mm:ss.cc o segundos"></div>
+      <div class="row"><label class="k">Duración</label><span class="v" id="selDur">—</span><button class="btn sm" id="bReset" title="Seleccionar el vídeo completo">Todo</button></div>
+    </div>
+
+    <div class="card" id="cardAudio">
+      <h3>Audio</h3>
+      <div class="seg">
+        <label><input type="radio" name="am" value="keep" checked>Mantener</label>
+        <label><input type="radio" name="am" value="remove">Quitar</label>
+        <label><input type="radio" name="am" value="replace">Cambiar</label>
+        <label><input type="radio" name="am" value="mix">Mezclar</label>
+      </div>
+      <div class="note warn hidden" id="noAudioNote">Este vídeo no tiene pista de audio.</div>
+      <div class="note hidden" id="multiAudioNote"></div>
+      <div class="row" id="rowVolO"><label class="k">Vol. original</label><input class="v" type="range" id="volO" min="0" max="300" step="5" value="100"><span class="val" id="volOv">100%</span></div>
+      <div id="extAudio" class="hidden">
+        <div class="row"><button class="btn sm" id="bAudio">Elegir audio…</button><span class="v note" id="audioName" style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Ningún archivo</span></div>
+        <div class="row"><label class="k">Vol. nuevo</label><input class="v" type="range" id="volN" min="0" max="300" step="5" value="100"><span class="val" id="volNv">100%</span></div>
+        <label class="check"><input type="checkbox" id="aLoop"><span>Repetir el audio si es más corto que el vídeo</span></label>
+      </div>
+    </div>
+
+    <div class="card" id="cardVideo">
+      <h3>Vídeo y compresión</h3>
+      <label class="check" id="fastWrap"><input type="checkbox" id="fast"><span><b>Corte rápido</b> (sin recodificar)<div class="note" style="margin:0">Instantáneo y sin perder calidad, pero el corte cae en el fotograma clave más cercano (puede moverse 1 o 2 s). No comprime.</div></span></label>
+      <div id="reenc">
+        <div class="row"><label class="k" for="res">Resolución</label>
+          <select class="v" id="res">
+            <option value="orig">Original</option>
+            <option value="2160">4K (2160p)</option>
+            <option value="1440">1440p</option>
+            <option value="1080">1080p</option>
+            <option value="720">720p</option>
+            <option value="480">480p</option>
+            <option value="360">360p</option>
+          </select></div>
+        <div class="row"><label class="k" for="rot">Rotar</label>
+          <select class="v" id="rot">
+            <option value="0">No</option>
+            <option value="90">90° derecha</option>
+            <option value="270">90° izquierda</option>
+            <option value="180">180°</option>
+          </select></div>
+        <div class="row"><label class="k">Comprimir</label>
+          <div class="seg v">
+            <label><input type="radio" name="cm" value="crf" checked>Por calidad</label>
+            <label><input type="radio" name="cm" value="size">Por tamaño</label>
+          </div></div>
+        <div id="crfBox">
+          <div class="row"><label class="k">Calidad</label><input class="v" type="range" id="crf" min="18" max="40" step="1" value="25"><span class="val" id="crfv">25</span></div>
+          <div class="note" style="display:flex;justify-content:space-between;margin:-4px 0 0 104px"><span>← más calidad</span><span>menos peso →</span></div>
+        </div>
+        <div id="sizeBox" class="hidden">
+          <div class="row"><label class="k" for="targetMB">Tamaño final</label><input class="v" type="number" id="targetMB" min="1" step="1" value="25"><span class="val">MB</span></div>
+          <div class="note" id="sizeNote"></div>
+        </div>
+        <div class="row"><label class="k" for="speed">Velocidad</label>
+          <select class="v" id="speed">
+            <option value="ultrafast">CPU máxima (archivo algo mayor)</option>
+            <option value="veryfast" selected>CPU rápida</option>
+            <option value="medium">CPU lenta (mejor compresión)</option>
+          </select></div>
+      </div>
+    </div>
+
+    <div class="card" id="cardExport">
+      <h3>Exportar</h3>
+      <div class="row"><label class="k" for="fmt">Formato</label>
+        <select class="v" id="fmt">
+          <option value="mp4">MP4 (H.264 + AAC), el más compatible</option>
+          <option value="webm">WebM (VP9 + Opus)</option>
+          <option value="gif">GIF animado (sin audio)</option>
+          <option value="mp3">MP3 (solo el audio)</option>
+        </select></div>
+      <div class="row"><label class="k" for="outName">Nombre</label><input class="v" type="text" id="outName" value="video_editado"></div>
+      <div class="row"><label class="k">Guardar en</label><span class="v outdir" id="outDir">—</span><button class="btn sm" id="bOutDir">Cambiar…</button></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary v" id="bExport" disabled>Exportar</button>
+        <button class="btn danger hidden" id="bCancel">Cancelar</button>
+      </div>
+      <div class="progress"><div id="progBar"></div></div>
+      <div class="status" id="status"></div>
+      <div class="result hidden" id="result"></div>
+      <label class="check" style="margin-top:14px"><input type="checkbox" id="autoOpen"><span class="note" style="margin:0">Abrir automáticamente cada grabación nueva al terminar de grabar</span></label>
+    </div>
+  </aside>
+</main>
+
+<div class="toast hidden" id="toast"><span id="toastMsg"></span><button class="btn sm primary" id="toastBtn">Abrir</button><button class="btn sm" id="toastX">✕</button></div>
+<div class="fatal hidden" id="fatal"></div>
+
+<script>
+const K = '__TOKEN__';
+const $ = (s) => document.querySelector(s);
+const vid = $('#vid'), still = $('#still');
+const aud = new Audio();
+
+const S = {
+  path: null, name: '', size: 0, duration: 0, inT: 0, outT: 0, cur: 0,
+  info: {}, canPreview: false, analyzed: false, loading: false, loadToken: 0,
+  audioPath: null, busy: false, job: null, playSel: false, dirty: false,
+  isProxy: false, proxying: false, proxyJob: null, state: {}
+};
+
+/* ================= utilidades ================= */
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function fmtT(t) {
+  if (!isFinite(t) || t < 0) t = 0;
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  const ss = s.toFixed(2).padStart(5, '0');
+  return (h ? h + ':' + String(m).padStart(2, '0') : String(m).padStart(2, '0')) + ':' + ss;
+}
+function parseT(str) {
+  const parts = String(str).trim().replace(',', '.').split(':').map(Number);
+  if (!parts.length || parts.some((p) => isNaN(p) || p < 0)) return NaN;
+  return parts.reduce((acc, p) => acc * 60 + p, 0);
+}
+function fmtSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+  return (b / 1073741824).toFixed(2) + ' GB';
+}
+const fmtDur = (t) => { t = Math.round(t); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const baseName = (p) => p.split(/[\\/]/).pop();
+const audioMode = () => document.querySelector('input[name=am]:checked').value;
+const compMode = () => document.querySelector('input[name=cm]:checked').value;
+const curTime = () => (S.canPreview ? vid.currentTime : S.cur);
+
+// Nombre legible para las grabaciones de la Game Bar:
+// "Juego - Escena - Windows, Mac… _DX11_ 2026-10-01 12-47-28.mp4" → título + fecha
+function prettyName(file) {
+  const base = file.replace(/\.[^.]+$/, '');
+  const m = /(\d{4})-(\d{2})-(\d{2})[ _](\d{2})-(\d{2})-(\d{2})\s*$/.exec(base);
+  let title = m ? base.slice(0, m.index) : base;
+  title = title.replace(/[\s_]+$/g, '').replace(/\s*_[A-Z0-9]+_\s*$/, '').replace(/[\s_]+$/g, '');
+  const segs = title.split(' - ').map((s) => s.trim()).filter(Boolean);
+  if (segs.length > 2) title = segs.slice(0, 2).join(' - ');
+  return { title: title || base, date: m ? `${m[3]}/${m[2]} ${m[4]}:${m[5]}` : '', stamp: m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}-${m[5]}-${m[6]}` : '' };
+}
+
+/* ================= servidor local ================= */
+function url(path, params = {}) {
+  const q = new URLSearchParams({ k: K, ...params });
+  return path + '?' + q.toString();
+}
+async function api(path, params, body) {
+  const r = await fetch(url(path, params), body !== undefined ? { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body) } : {});
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch (_) { j = t; }
+  if (!r.ok) throw new Error((j && j.error) || ('HTTP ' + r.status));
+  return j;
+}
+const mediaURL = (p) => url('/media', { path: p });
+const thumbURL = (p, t, h) => url('/api/thumb', { path: p, t: (+t).toFixed(2), h });
+
+/* ================= registro ================= */
+function showLog(lines) {
+  const el = $('#log');
+  el.textContent = lines.join('\n');
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ================= arranque ================= */
+async function boot() {
+  try { S.state = await api('/api/state'); }
+  catch (e) { return fatal('No se puede conectar con el editor. Cierra esta ventana y vuelve a abrir «Editor de Vídeo».'); }
+  if (!S.state.ffmpeg) return fatal('Falta FFmpeg. Debe estar en la carpeta «ffmpeg» junto a EditorVideo.exe (ffmpeg.exe y ffprobe.exe).');
+  $('#outDir').textContent = S.state.outputDir;
+  $('#autoOpen').checked = !!S.state.autoOpen;
+  const hw = (S.state.hw || '').split(',').filter(Boolean);
+  const names = { h264_nvenc: 'GPU NVIDIA', h264_qsv: 'GPU Intel', h264_amf: 'GPU AMD' };
+  hw.reverse().forEach((enc) => {
+    const o = document.createElement('option');
+    o.value = 'hw:' + enc; o.textContent = names[enc] + ': muy rápido (recomendado)';
+    $('#speed').prepend(o);
+  });
+  if (hw.length) $('#speed').value = 'hw:' + hw[hw.length - 1];
+  try { if (localStorage.getItem('recsHidden') === '1') toggleRecs(false); } catch (_) {}
+  heartbeat();
+  loadRecordings(true);
+  setInterval(() => loadRecordings(false), 4000);
+  render(); refreshUI();
+}
+function fatal(msg) { const f = $('#fatal'); f.innerHTML = `<div><div style="font-size:40px">⚠️</div><p>${esc(msg)}</p></div>`; f.classList.remove('hidden'); }
+
+// Latido: indica al servidor que la ventana sigue abierta y recoge archivos
+// que se hayan abierto desde fuera (doble clic, "Enviar a", etc.)
+async function heartbeat() {
+  try {
+    const ev = await api('/api/events');
+    if (ev.open && ev.open.length) openPath(ev.open[ev.open.length - 1]);
+  } catch (_) {}
+  setTimeout(heartbeat, 1000);
+}
+window.addEventListener('pagehide', () => navigator.sendBeacon(url('/api/bye')));
+
+/* ================= grabaciones ================= */
+let recSeen = null, recData = [];
+async function loadRecordings(first) {
+  if (document.hidden && !first) return;
+  let list;
+  try { list = await api('/api/recordings'); } catch (_) { return; }
+  const fresh = [];
+  if (recSeen) for (const r of list) if (!recSeen.has(r.path) && !r.recording) fresh.push(r);
+  // una grabación que estaba "en curso" y ha terminado también cuenta como nueva
+  for (const r of list) { const old = recData.find((x) => x.path === r.path); if (old && old.recording && !r.recording) fresh.push(r); }
+  recSeen = new Set(list.filter((r) => !r.recording).map((r) => r.path));
+  const changed = JSON.stringify(list) !== JSON.stringify(recData);
+  recData = list;
+  if (changed || first) renderRecs();
+  if (fresh.length) onNewRecording(fresh[0]);
+}
+function renderRecs() {
+  const el = $('#recList');
+  if (!recData.length) {
+    el.innerHTML = `<div class="recempty">Todavía no hay grabaciones.<br><br>Graba con <kbd>Win</kbd>+<kbd>Alt</kbd>+<kbd>R</kbd> (Xbox Game Bar) y aparecerán aquí automáticamente.<br><br><span style="font-size:11px">Carpetas vigiladas:<br>${(S.state.recDirs || []).map(esc).join('<br>') || '—'}</span></div>`;
+    return;
+  }
+  const newest = Date.now() - 10 * 60 * 1000;
+  el.innerHTML = recData.map((r) => {
+    const p = prettyName(r.name);
+    const when = p.date || new Date(r.mtime).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const badge = r.recording ? '<span class="badge live">● GRABANDO</span>' : (r.mtime > newest ? '<span class="badge">NUEVO</span>' : '');
+    return `<div class="rec ${r.recording ? 'busy' : ''} ${r.path === S.path ? 'active' : ''}" data-path="${esc(r.path)}" title="${esc(r.name)}">
+      <div class="th">${r.recording ? '' : `<img loading="lazy" src="${thumbURL(r.path, 1, 108)}" alt="" onerror="this.remove()">`}${badge}</div>
+      <div class="t"><div class="n">${esc(p.title)}</div><div class="m">${esc(when)} · ${fmtSize(r.size)}</div></div></div>`;
+  }).join('');
+}
+$('#recList').addEventListener('click', (e) => {
+  const it = e.target.closest('.rec');
+  if (!it || it.classList.contains('busy')) return;
+  openPath(it.dataset.path);
+});
+$('#bRecRefresh').onclick = () => loadRecordings(true);
+function toggleRecs(show) {
+  const m = $('#main');
+  const vis = show === undefined ? m.classList.contains('norec') : show;
+  m.classList.toggle('norec', !vis);
+  $('#bRecs').classList.toggle('on', vis);
+  try { localStorage.setItem('recsHidden', vis ? '0' : '1'); } catch (_) {}
+  setTimeout(() => { if (S.path) makeThumbs(S.loadToken); }, 50);
+}
+$('#bRecs').onclick = () => toggleRecs();
+
+function onNewRecording(r) {
+  const auto = $('#autoOpen').checked && !S.busy && (!S.path || !S.dirty);
+  if (auto) { openPath(r.path); toast(''); return; }
+  toast('Nueva grabación: ' + prettyName(r.name).title, () => openPath(r.path));
+}
+let toastTimer = null;
+function toast(msg, action) {
+  const t = $('#toast');
+  clearTimeout(toastTimer);
+  if (!msg) { t.classList.add('hidden'); return; }
+  $('#toastMsg').textContent = msg;
+  $('#toastBtn').classList.toggle('hidden', !action);
+  $('#toastBtn').onclick = () => { t.classList.add('hidden'); action && action(); };
+  t.classList.remove('hidden');
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 15000);
+}
+$('#toastX').onclick = () => toast('');
+$('#autoOpen').onchange = () => api('/api/settings', {}, { autoOpen: $('#autoOpen').checked }).catch(() => {});
+
+/* ================= abrir vídeo ================= */
+function showOverlay(msg) { $('#overlayMsg').textContent = msg; $('#overlay').classList.remove('hidden'); }
+function hideOverlay() { $('#overlay').classList.add('hidden'); }
+function showNotice(msg) { const n = $('#notice'); n.textContent = msg || ''; n.classList.toggle('hidden', !msg); }
+
+async function pickVideo() {
+  if (S.busy) return setStatus('Espera a que termine la exportación (o cancélala).', 'err');
+  try { const r = await api('/api/pick', { kind: 'video' }, ''); if (r.path) openPath(r.path); }
+  catch (e) { setStatus('No se pudo abrir el selector de archivos: ' + e.message, 'err'); }
+}
+$('#bOpen').onclick = pickVideo;
+$('#empty').onclick = pickVideo;
+
+function tryPreview(src) {
+  return new Promise((res) => {
+    let done = false, to;
+    const fin = (ok) => {
+      if (done) return; done = true;
+      clearTimeout(to);
+      vid.onloadeddata = vid.onerror = vid.onloadedmetadata = null;
+      const e = vid.error;
+      res({ ok, err: e ? (e.message || 'código ' + e.code) : (ok ? '' : 'sin respuesta') });
+    };
+    const arm = (ms) => { clearTimeout(to); to = setTimeout(() => fin(vid.readyState >= 2 && vid.videoWidth > 0), ms); };
+    arm(15000);
+    vid.onloadedmetadata = () => { if (vid.videoWidth > 0) arm(30000); };
+    vid.onloadeddata = () => fin(vid.videoWidth > 0);
+    vid.onerror = () => fin(false);
+    vid.classList.remove('hidden');
+    vid.src = src;
+    vid.load();
+  });
+}
+
+async function openPath(p) {
+  if (!p) return;
+  if (S.busy) { setStatus('Espera a que termine la exportación (o cancélala) antes de abrir otro vídeo.', 'err'); return; }
+  const token = ++S.loadToken;
+  vid.pause();
+  if (S.proxyJob) { api('/api/cancel', { id: S.proxyJob }, '').catch(() => {}); S.proxyJob = null; }
+  Object.assign(S, { path: p, name: baseName(p), size: 0, duration: 0, inT: 0, outT: 0, cur: 0, info: {}, analyzed: false, loading: true, playSel: false, canPreview: false, isProxy: false, proxying: false, dirty: false });
+  const pn = prettyName(S.name);
+  document.title = pn.title + ' — Editor de Vídeo';
+  $('#outName').value = (pn.stamp ? pn.title + ' ' + pn.stamp : S.name.replace(/\.[^.]+$/, '')) + '_editado';
+  $('#empty').classList.add('hidden');
+  $('#thumbs').innerHTML = '';
+  $('#result').classList.add('hidden');
+  still.classList.add('hidden'); still.removeAttribute('src');
+  showNotice(''); setStatus(''); setProgress(0);
+  showOverlay('Cargando vídeo…');
+  renderRecs(); updateFileInfo(); refreshUI();
+
+  // Análisis con ffprobe y vista previa del navegador en paralelo
+  const probeP = api('/api/probe', { path: p }).catch((e) => ({ error: e.message }));
+  const { ok, err } = await tryPreview(mediaURL(p));
+  if (token !== S.loadToken) return;
+  S.canPreview = ok;
+  if (ok && isFinite(vid.duration) && vid.duration > 0) { S.duration = vid.duration; S.outT = S.duration; }
+  if (!ok) { vid.removeAttribute('src'); vid.load(); vid.classList.add('hidden'); }
+
+  const j = await probeP;
+  if (token !== S.loadToken) return;
+  S.loading = false;
+  hideOverlay();
+  if (!parseProbe(j)) {
+    S.analyzed = false;
+    setStatus(S.info.hasAudio
+      ? 'Este archivo solo contiene audio, no vídeo.'
+      : 'No se reconoce como un vídeo válido (puede estar dañado o seguir grabándose).', 'err');
+    updateFileInfo(); refreshUI();
+    return;
+  }
+  if (!S.duration && S.info.duration) { S.duration = S.info.duration; S.outT = S.duration; }
+  S.analyzed = true;
+  makeThumbs(token);
+  if (!S.canPreview) {
+    S.noPrevReason = 'El navegador no puede reproducir este vídeo directamente (' + (S.info.vcodec || '?') + (S.info.pix ? ', ' + S.info.pix : '') + ').';
+    still.classList.remove('hidden');
+    requestFrame(0);
+    makeProxy(token);
+  }
+  updateFileInfo(); render(); refreshUI();
+}
+
+function parseProbe(j) {
+  if (!j || !j.streams) { S.info = {}; return false; }
+  const vs = j.streams.filter((s) => s.codec_type === 'video' && !(s.disposition && s.disposition.attached_pic));
+  const as = j.streams.filter((s) => s.codec_type === 'audio');
+  const v = vs[0] || {};
+  const fr = (v.avg_frame_rate || v.r_frame_rate || '30/1').split('/');
+  let rot = 0;
+  for (const sd of v.side_data_list || []) if (sd.rotation !== undefined) rot = +sd.rotation;
+  if (v.tags && v.tags.rotate) rot = +v.tags.rotate;
+  S.info = {
+    duration: +(j.format && j.format.duration) || +v.duration || 0,
+    hasVideo: vs.length > 0, vcodec: v.codec_name, pix: v.pix_fmt || '', profile: v.profile || '',
+    w: v.width || 0, h: v.height || 0, fps: (+fr[0] / (+fr[1] || 1)) || 30,
+    hasAudio: as.length > 0, audioCount: as.length, acodec: as[0] && as[0].codec_name,
+    rotated: Math.abs(Math.round(rot)) % 180 === 90
+  };
+  S.size = +(j.format && j.format.size) || 0;
+  return S.info.hasVideo;
+}
+
+function updateFileInfo() {
+  if (!S.path) { $('#fileInfo').textContent = ''; return; }
+  const i = S.info, bits = [S.name];
+  if (S.size) bits.push(fmtSize(S.size));
+  if (i.w) bits.push(i.rotated ? i.h + '×' + i.w : i.w + '×' + i.h);
+  if (i.vcodec) bits.push(i.vcodec + (i.acodec ? ' / ' + i.acodec + (i.audioCount > 1 ? ' ×' + i.audioCount : '') : ' / sin audio'));
+  if (S.duration && S.analyzed) bits.push(fmtT(S.duration));
+  $('#fileInfo').textContent = bits.join(' · ');
+  $('#fileInfo').title = S.path;
+}
+
+/* ================= miniaturas, fotogramas y vista previa ================= */
+function makeThumbs(token) {
+  const strip = $('#thumbs');
+  strip.innerHTML = '';
+  if (!S.duration || !S.analyzed) return;
+  const n = clamp(Math.round(strip.clientWidth / 100), 4, 20);
+  for (let i = 0; i < n; i++) {
+    const img = new Image();
+    img.src = thumbURL(S.path, (i + 0.5) * S.duration / n, 64);
+    img.onerror = () => { img.style.visibility = 'hidden'; };
+    strip.appendChild(img);
+  }
+}
+let thumbsResize = null;
+window.addEventListener('resize', () => { clearTimeout(thumbsResize); thumbsResize = setTimeout(() => S.path && makeThumbs(S.loadToken), 300); });
+
+let frameBusy = false, frameWant = null;
+async function requestFrame(t) {
+  frameWant = t;
+  if (frameBusy || S.canPreview || !S.analyzed) return;
+  frameBusy = true;
+  while (frameWant !== null) {
+    const tt = frameWant, token = S.loadToken;
+    frameWant = null;
+    await new Promise((res) => {
+      const img = new Image();
+      img.onload = () => { if (token === S.loadToken) still.src = img.src; res(); };
+      img.onerror = res;
+      img.src = thumbURL(S.path, tt, 720);
+    });
+  }
+  frameBusy = false;
+}
+
+// Si el navegador no sabe reproducir el vídeo, se crea una copia ligera solo para verlo.
+async function makeProxy(token) {
+  const i = S.info;
+  S.proxying = true;
+  const args = ['-i', '{IN}', '-map', '0:v:0'];
+  if (i.hasAudio) args.push('-map', '0:a:0');
+  args.push('-vf', scaleExpr(720) + ',format=yuv420p', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-g', '15');
+  if (i.hasAudio) args.push('-c:a', 'aac', '-b:a', '128k', '-ac', '2');
+  args.push('-movflags', '+faststart', '{OUT}');
+  try {
+    const r = await api('/api/run', {}, { kind: 'proxy', input: S.path, ext: 'mp4', args });
+    S.proxyJob = r.id;
+    for (;;) {
+      const st = await api('/api/job', { id: r.id });
+      if (token !== S.loadToken) return;
+      if (st.state === 'running') {
+        const p = clamp(st.time / S.duration, 0, 1);
+        showNotice(`${S.noPrevReason} Preparando una vista previa reproducible… ${Math.floor(p * 100)}%. Mientras tanto puedes recortar y exportar.`);
+        await sleep(500);
+        continue;
+      }
+      if (st.state !== 'done') throw new Error(st.error || st.state);
+      const { ok } = await tryPreview(mediaURL(st.output));
+      if (token !== S.loadToken) return;
+      if (!ok) throw new Error('el navegador tampoco reproduce la vista previa');
+      S.canPreview = true; S.isProxy = true;
+      still.classList.add('hidden');
+      vid.currentTime = S.cur;
+      showNotice('Vista previa en calidad reducida. El vídeo exportado usa el original a calidad completa.');
+      setTimeout(() => { if (token === S.loadToken) showNotice(''); }, 6000);
+      break;
+    }
+  } catch (e) {
+    if (token === S.loadToken) {
+      vid.classList.add('hidden');
+      showNotice(S.noPrevReason + ' Verás fotogramas sueltos al moverte por la línea de tiempo; recortar y exportar funciona igual.');
+    }
+  } finally {
+    if (token === S.loadToken) { S.proxying = false; S.proxyJob = null; render(); refreshUI(); }
+  }
+}
+
+/* ================= línea de tiempo ================= */
+const tl = $('#timeline');
+function render() {
+  const d = S.duration || 1, ct = curTime();
+  const pIn = (S.inT / d) * 100, pOut = (S.outT / d) * 100;
+  $('#shadeL').style.cssText = `left:0;width:${pIn}%`;
+  $('#shadeR').style.cssText = `left:${pOut}%;right:0`;
+  $('#selBox').style.cssText = `left:${pIn}%;width:${Math.max(0, pOut - pIn)}%`;
+  $('#playhead').style.left = `calc(${(ct / d) * 100}% - 1px)`;
+  $('#tCur').textContent = fmtT(ct);
+  $('#tDur').textContent = fmtT(S.duration);
+  if (document.activeElement !== $('#inT')) $('#inT').value = fmtT(S.inT);
+  if (document.activeElement !== $('#outT')) $('#outT').value = fmtT(S.outT);
+  $('#selDur').textContent = S.duration ? fmtT(S.outT - S.inT) : '—';
+  tl.classList.toggle('off', !S.duration);
+  updateSizeNote();
+}
+const xToT = (x) => { const r = tl.getBoundingClientRect(); return clamp((x - r.left) / r.width, 0, 1) * S.duration; };
+function seek(t) {
+  t = clamp(t, 0, S.duration || 0);
+  S.cur = t;
+  if (S.canPreview) vid.currentTime = t; else requestFrame(t);
+  render(); syncAudio();
+}
+function drag(kind, ev) {
+  if (!S.duration || S.busy) return;
+  ev.preventDefault(); ev.stopPropagation();
+  const move = (e) => {
+    const t = xToT(e.clientX);
+    if (kind === 'in') { S.inT = clamp(t, 0, S.outT - 0.05); S.dirty = true; seek(S.inT); }
+    else if (kind === 'out') { S.outT = clamp(t, S.inT + 0.05, S.duration); S.dirty = true; seek(S.outT); }
+    else seek(t);
+  };
+  move(ev);
+  const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+tl.addEventListener('pointerdown', (e) => drag('seek', e));
+$('#hIn').addEventListener('pointerdown', (e) => drag('in', e));
+$('#hOut').addEventListener('pointerdown', (e) => drag('out', e));
+
+function setIn(t) { if (!S.duration) return; S.inT = clamp(t, 0, Math.max(0, S.outT - 0.05)); S.dirty = true; render(); }
+function setOut(t) { if (!S.duration) return; S.outT = clamp(t, S.inT + 0.05, S.duration); S.dirty = true; render(); }
+$('#bIn').onclick = () => setIn(curTime());
+$('#bOut').onclick = () => setOut(curTime());
+$('#bReset').onclick = () => { S.inT = 0; S.outT = S.duration; render(); };
+function timeField(el, apply) {
+  el.addEventListener('change', () => {
+    const t = parseT(el.value);
+    if (isNaN(t)) { el.style.borderColor = 'var(--danger)'; setTimeout(() => { el.style.borderColor = ''; render(); }, 900); return; }
+    apply(t);
+  });
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter') el.blur(); });
+  el.addEventListener('blur', render);
+}
+timeField($('#inT'), (t) => { setIn(t); seek(S.inT); });
+timeField($('#outT'), (t) => { setOut(t); seek(S.outT); });
+
+/* ================= reproducción ================= */
+function togglePlay(sel) {
+  if (!S.canPreview || S.busy) return;
+  if (!vid.paused) { vid.pause(); return; }
+  S.playSel = !!sel;
+  if (sel || vid.currentTime < S.inT || vid.currentTime >= S.outT - 0.02) vid.currentTime = S.inT;
+  vid.play().catch(() => {});
+}
+$('#bPlay').onclick = () => togglePlay(false);
+$('#bPlaySel').onclick = () => togglePlay(true);
+vid.addEventListener('play', () => { $('#bPlay').textContent = '❚❚ Pausa'; tick(); syncAudio(); });
+vid.addEventListener('pause', () => { $('#bPlay').textContent = '▶ Reproducir'; S.playSel = false; syncAudio(); render(); });
+vid.addEventListener('seeked', () => { S.cur = vid.currentTime; render(); syncAudio(); });
+function tick() {
+  if (vid.paused) return;
+  if (S.playSel && vid.currentTime >= S.outT) { vid.pause(); vid.currentTime = S.outT; }
+  S.cur = vid.currentTime;
+  render(); syncAudio();
+  requestAnimationFrame(tick);
+}
+function syncAudio() {
+  const am = audioMode();
+  const useExt = (am === 'replace' || am === 'mix') && S.audioPath;
+  vid.muted = am === 'remove' || (am === 'replace' && !!S.audioPath);
+  vid.volume = clamp(+$('#volO').value / 100, 0, 1);
+  if (!useExt || !S.canPreview) { if (!aud.paused) aud.pause(); return; }
+  aud.volume = clamp(+$('#volN').value / 100, 0, 1);
+  let t = Math.max(0, vid.currentTime - S.inT);
+  const d = aud.duration || 0;
+  if (d && t >= d) {
+    if ($('#aLoop').checked) t = t % d;
+    else { if (!aud.paused) aud.pause(); return; }
+  }
+  if (Math.abs(aud.currentTime - t) > 0.3) aud.currentTime = t;
+  if (!vid.paused && aud.paused) aud.play().catch(() => {});
+  if (vid.paused && !aud.paused) aud.pause();
+}
+
+/* ================= teclado ================= */
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'E')) { e.preventDefault(); if (!$('#bExport').disabled) doExport(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); pickVideo(); return; }
+  if (t.matches('input[type=text],input[type=number],select,textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (!S.path) return;
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (t !== document.body && t.blur) t.blur();
+    togglePlay(false);
+    return;
+  }
+  if (t.matches('input[type=range]') && /^(Arrow|Home|End|Page)/.test(e.key)) return;
+  const fr = 1 / (S.info.fps || 30);
+  if (e.key === 'i' || e.key === 'I') setIn(curTime());
+  else if (e.key === 'o' || e.key === 'O') setOut(curTime());
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); vid.pause(); seek(curTime() - (e.shiftKey ? 1 : fr)); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); vid.pause(); seek(curTime() + (e.shiftKey ? 1 : fr)); }
+  else if (e.key === 'Home') { e.preventDefault(); seek(S.inT); }
+  else if (e.key === 'End') { e.preventDefault(); seek(S.outT); }
+});
+
+/* ================= audio externo ================= */
+function setAudioPath(p) {
+  if (!p) return;
+  S.audioPath = p;
+  aud.src = mediaURL(p);
+  $('#audioName').textContent = baseName(p);
+  $('#audioName').title = p;
+  if (audioMode() === 'keep' || audioMode() === 'remove') document.querySelector('input[name=am][value=replace]').checked = true;
+  refreshUI(); syncAudio();
+}
+$('#bAudio').onclick = async () => {
+  try { const r = await api('/api/pick', { kind: 'audio' }, ''); if (r.path) setAudioPath(r.path); }
+  catch (e) { setStatus(e.message, 'err'); }
+};
+
+/* ================= arrastrar y soltar ================= */
+// El navegador no da la ruta del archivo soltado, así que se copia a una carpeta temporal.
+function uploadFile(f) {
+  return new Promise((res, rej) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', url('/api/upload', { name: f.name }));
+    x.upload.onprogress = (e) => { if (e.lengthComputable) showOverlay(`Importando ${f.name}… ${Math.round(e.loaded / e.total * 100)}%`); };
+    x.onload = () => { try { res(JSON.parse(x.responseText).path); } catch (e) { rej(e); } };
+    x.onerror = () => rej(new Error('error al importar'));
+    x.send(f);
+  });
+}
+const viewer = $('#viewer');
+let dragDepth = 0;
+const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+window.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; viewer.classList.add('drag'); });
+window.addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; viewer.classList.remove('drag'); } });
+window.addEventListener('drop', async (e) => {
+  e.preventDefault(); dragDepth = 0; viewer.classList.remove('drag');
+  if (S.busy) return setStatus('Espera a que termine la exportación.', 'err');
+  const files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
+  const isAudio = (x) => x.type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|opus|flac|wma)$/i.test(x.name);
+  const v = files.find((x) => !isAudio(x)), a = files.find(isAudio);
+  try {
+    if (v) { const p = await uploadFile(v); hideOverlay(); await openPath(p); }
+    if (a) { const p = await uploadFile(a); hideOverlay(); setAudioPath(p); }
+  } catch (err) { hideOverlay(); setStatus('No se pudo importar: ' + err.message, 'err'); }
+});
+
+/* ================= estado de la interfaz ================= */
+function refreshUI() {
+  const fmt = $('#fmt').value, am = audioMode();
+  const isVideo = fmt === 'mp4' || fmt === 'webm';
+  const fast = $('#fast').checked && isVideo;
+  $('#fastWrap').classList.toggle('dim', !isVideo);
+  $('#reenc').classList.toggle('dim', fast || fmt === 'mp3');
+  $('#cardAudio').classList.toggle('dim', fmt === 'gif');
+  $('#extAudio').classList.toggle('hidden', !(am === 'replace' || am === 'mix'));
+  $('#rowVolO').classList.toggle('hidden', !(am === 'keep' || am === 'mix'));
+  $('#noAudioNote').classList.toggle('hidden', !S.analyzed || S.info.hasAudio);
+  const multi = S.analyzed && S.info.audioCount > 1 && (am === 'keep' || am === 'mix');
+  $('#multiAudioNote').classList.toggle('hidden', !multi);
+  if (multi) $('#multiAudioNote').textContent = `El vídeo tiene ${S.info.audioCount} pistas de audio (por ejemplo juego y micrófono): se mezclarán en una.`;
+  const cm = compMode();
+  $('#crfBox').classList.toggle('hidden', cm !== 'crf');
+  $('#sizeBox').classList.toggle('hidden', cm !== 'size');
+  ['#bPlay', '#bPlaySel'].forEach((s) => { $(s).disabled = !S.canPreview || S.busy; });
+  ['#bIn', '#bOut', '#bReset'].forEach((s) => $(s).disabled = !S.duration || S.busy);
+  const b = $('#bExport');
+  let label = 'Exportar', can = false;
+  if (!S.path) label = 'Abre un vídeo para empezar';
+  else if (S.busy) label = 'Exportando…';
+  else if (S.loading) label = 'Cargando vídeo…';
+  else if (!S.analyzed) label = 'Archivo no válido';
+  else can = true;
+  b.disabled = !can; b.textContent = label;
+  $('#bCancel').classList.toggle('hidden', !S.busy);
+  ['cardCut', 'cardAudio', 'cardVideo'].forEach((id) => $('#' + id).style.pointerEvents = S.busy ? 'none' : '');
+  ['#fmt', '#outName', '#bOutDir'].forEach((s) => $(s).disabled = S.busy);
+  updateSizeNote();
+}
+function updateSizeNote() {
+  const dur = S.outT - S.inT;
+  if (!dur || dur <= 0) { $('#sizeNote').textContent = ''; return; }
+  const kb = videoKbps(dur);
+  $('#sizeNote').textContent = `≈ ${kb} kbps de vídeo para ${fmtT(dur)}.` + (kb < 600 ? ' Muy bajo para grabaciones de pantalla: baja también la resolución.' : '');
+}
+function videoKbps(dur) {
+  const mb = Math.max(0.5, +$('#targetMB').value || 1);
+  const audioK = audioMode() === 'remove' ? 0 : 128;
+  return Math.max(64, Math.floor(mb * 8388.608 * 0.96 / dur - audioK));
+}
+document.querySelectorAll('input[name=am],input[name=cm],#fmt,#fast,#aLoop,#res,#rot,#speed,#crf').forEach((el) => el.addEventListener('change', () => { S.dirty = !!S.path; refreshUI(); syncAudio(); }));
+$('#targetMB').addEventListener('input', updateSizeNote);
+[['volO', 'volOv', '%'], ['volN', 'volNv', '%'], ['crf', 'crfv', '']].forEach(([i, o, u]) => {
+  $('#' + i).addEventListener('input', () => { $('#' + o).textContent = $('#' + i).value + u; syncAudio(); });
+});
+$('#bOutDir').onclick = async () => {
+  try { const r = await api('/api/pickdir', {}, ''); if (r.path) $('#outDir').textContent = r.path; } catch (e) { setStatus(e.message, 'err'); }
+};
+
+/* ================= construir el comando ffmpeg ================= */
+// "720p" = lado corto de 720 (sirve también para vídeos verticales); nunca amplía
+const scaleExpr = (h) => `scale='if(gt(iw,ih),-2,trunc(min(${h},iw)/2)*2)':'if(gt(iw,ih),trunc(min(${h},ih)/2)*2,-2)'`;
+const COPY_OK = {
+  mp4: { v: /^(h264|hevc|av1|mpeg4|vp9)$/, a: /^(aac|mp3|opus|ac3|eac3|alac|flac)$/ },
+  webm: { v: /^(vp8|vp9|av1)$/, a: /^(opus|vorbis)$/ }
+};
+function buildPlan() {
+  if (!S.path || !S.analyzed) return { error: 'Abre un vídeo primero.' };
+  const fmt = $('#fmt').value, am = audioMode();
+  const dur = +(S.outT - S.inT).toFixed(3);
+  if (!(dur > 0.05)) return { error: 'La selección es demasiado corta.' };
+  const isVideo = fmt === 'mp4' || fmt === 'webm';
+  let copy = isVideo && $('#fast').checked, note = '';
+  if (copy && !COPY_OK[fmt].v.test(S.info.vcodec || '')) {
+    copy = false;
+    note = `El corte rápido no es compatible con ${S.info.vcodec} → ${fmt.toUpperCase()}, así que se recodificará.`;
+  }
+  const hasA = S.info.hasAudio, nA = S.info.audioCount || 0;
+  const wantsExt = (am === 'replace' || am === 'mix') && fmt !== 'gif';
+  if (wantsExt && !S.audioPath) return { error: 'Elige el archivo de audio nuevo (o cambia la opción de audio).' };
+  if (fmt === 'mp3' && am === 'remove') return { error: 'Has elegido quitar el audio: no queda nada que exportar a MP3.' };
+  if (fmt === 'mp3' && !hasA && !wantsExt) return { error: 'Este vídeo no tiene audio.' };
+
+  const a = ['-ss', S.inT.toFixed(3), '-t', dur.toFixed(3), '-i', '{IN}'];
+  if (wantsExt) {
+    if ($('#aLoop').checked) a.push('-stream_loop', '-1');
+    a.push('-i', '{AUD}');
+  }
+
+  // ----- audio -----
+  const vo = +$('#volO').value / 100, vn = +$('#volN').value / 100;
+  let aMap = null, aFilter = null, fc = null;
+  if (fmt !== 'gif' && am !== 'remove') {
+    const useOrig = hasA && (am === 'keep' || am === 'mix');
+    const srcs = [];
+    if (useOrig) for (let i = 0; i < nA; i++) srcs.push(`[0:a:${i}]`);
+    if (wantsExt) srcs.push('[1:a:0]');
+    if (srcs.length > 1) {
+      // varias pistas (juego + micro, o audio nuevo mezclado): se mezclan en una
+      const parts = srcs.map((s, i) => `${s}volume=${s.startsWith('[1') ? vn : vo}[m${i}]`);
+      fc = parts.join(';') + ';' + srcs.map((_, i) => `[m${i}]`).join('') + `amix=inputs=${srcs.length}:duration=first:dropout_transition=0:normalize=0[aout]`;
+      aMap = '[aout]';
+    } else if (wantsExt) {
+      aMap = '1:a:0'; if (vn !== 1) aFilter = `volume=${vn}`;
+    } else if (useOrig) {
+      aMap = '0:a:0'; if (vo !== 1) aFilter = `volume=${vo}`;
+    }
+  }
+
+  // ----- vídeo -----
+  const res = $('#res').value, rot = +$('#rot').value;
+  const vf = [];
+  if (!copy && fmt !== 'mp3') {
+    if (rot === 90) vf.push('transpose=1');
+    else if (rot === 270) vf.push('transpose=2');
+    else if (rot === 180) vf.push('hflip,vflip');
+  }
+  if (fc) a.push('-filter_complex', fc);
+
+  if (fmt === 'mp3') {
+    a.push('-map', aMap);
+    if (aFilter) a.push('-af', aFilter);
+    a.push('-vn', '-c:a', 'libmp3lame', '-b:a', '192k');
+  } else if (fmt === 'gif') {
+    const h = res === 'orig' ? 480 : Math.min(+res, 720);
+    vf.push('fps=15', scaleExpr(h) + ':flags=lanczos', 'split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5');
+    a.push('-map', '0:v:0', '-vf', vf.join(','), '-an', '-loop', '0');
+  } else {
+    a.push('-map', '0:v:0');
+    if (aMap) a.push('-map', aMap); else a.push('-an');
+    if (copy) {
+      a.push('-c:v', 'copy', '-avoid_negative_ts', 'make_zero');
+      if (fmt === 'mp4' && S.info.vcodec === 'hevc') a.push('-tag:v', 'hvc1');
+    } else {
+      vf.push(res === 'orig' ? 'scale=trunc(iw/2)*2:trunc(ih/2)*2' : scaleExpr(+res));
+      vf.push('format=yuv420p');
+      a.push('-vf', vf.join(','));
+      const speed = $('#speed').value, crf = +$('#crf').value;
+      const bySize = compMode() === 'size', kb = videoKbps(dur);
+      const rate = bySize ? ['-b:v', kb + 'k', '-maxrate', Math.round(kb * 1.4) + 'k', '-bufsize', kb * 2 + 'k'] : null;
+      if (fmt === 'webm') {
+        a.push('-c:v', 'libvpx-vp9', '-row-mt', '1', '-deadline', 'realtime', '-cpu-used', speed === 'medium' ? '4' : '8');
+        a.push(...(bySize ? ['-b:v', kb + 'k'] : ['-crf', String(clamp(crf + 8, 15, 55)), '-b:v', '0']));
+      } else if (speed.startsWith('hw:')) {
+        const enc = speed.slice(3);
+        if (enc === 'h264_nvenc') a.push('-c:v', enc, '-preset', 'p4', ...(rate || ['-rc', 'vbr', '-cq', String(crf + 2), '-b:v', '0']));
+        else if (enc === 'h264_qsv') a.push('-c:v', enc, '-preset', 'faster', ...(rate || ['-global_quality', String(crf + 2)]));
+        else a.push('-c:v', enc, '-quality', 'speed', ...(rate || ['-rc', 'cqp', '-qp_i', String(crf), '-qp_p', String(crf + 2)]));
+      } else {
+        a.push('-c:v', 'libx264', '-preset', speed, ...(rate || ['-crf', String(crf)]));
+      }
+    }
+    if (aMap) {
+      const srcCodec = aMap === '0:a:0' ? S.info.acodec : null;
+      const canCopyA = copy && !aFilter && !fc && !wantsExt && COPY_OK[fmt].a.test(srcCodec || '');
+      if (canCopyA) a.push('-c:a', 'copy');
+      else {
+        if (aFilter) a.push('-af', aFilter);
+        a.push(...(fmt === 'webm' ? ['-c:a', 'libopus', '-b:a', '128k'] : ['-c:a', 'aac', '-b:a', '160k']));
+      }
+    }
+    if (fmt === 'mp4') a.push('-movflags', '+faststart');
+  }
+  if (wantsExt) a.push('-t', dur.toFixed(3));
+  a.push('{OUT}');
+  return { args: a, ext: fmt, dur, copy, note };
+}
+
+/* ================= exportar ================= */
+function setProgress(p) { $('#progBar').style.width = (p * 100).toFixed(1) + '%'; }
+function setStatus(msg, cls) { const el = $('#status'); el.textContent = msg; el.className = 'status ' + (cls || ''); }
+
+async function doExport() {
+  const plan = buildPlan();
+  if (plan.error) { setStatus(plan.error, 'err'); return; }
+  S.busy = true;
+  vid.pause();
+  $('#result').classList.add('hidden');
+  setProgress(0); setStatus('Iniciando…' + (plan.note ? ' · ' + plan.note : ''));
+  refreshUI();
+  const t0 = performance.now();
+  try {
+    const r = await api('/api/run', {}, { kind: 'export', input: S.path, audio: S.audioPath && (audioMode() === 'replace' || audioMode() === 'mix') ? S.audioPath : null, ext: plan.ext, name: $('#outName').value.trim(), args: plan.args });
+    S.job = r.id;
+    let st;
+    for (;;) {
+      await sleep(400);
+      st = await api('/api/job', { id: r.id });
+      showLog(st.log || []);
+      if (st.state !== 'running') break;
+      const p = clamp(st.time / plan.dur, 0, 1);
+      setProgress(p);
+      if (p > 0.01) {
+        const eta = st.elapsed / p * (1 - p);
+        setStatus(`Procesando… ${Math.round(p * 100)}% · quedan ~${eta < 60 ? Math.ceil(eta) + ' s' : Math.ceil(eta / 60) + ' min'}` + (plan.note ? ' · ' + plan.note : ''));
+      }
+    }
+    if (st.state === 'cancelled') { setStatus('Exportación cancelada.'); setProgress(0); return; }
+    if (st.state !== 'done') {
+      const errLine = (st.log || []).slice().reverse().find((l) => /error|invalid|not supported|could not|no such|failed|cannot|unable/i.test(l));
+      let msg = 'No se pudo exportar.' + (errLine ? ' FFmpeg dice: «' + errLine.trim().slice(0, 180) + '».' : ' ' + (st.error || ''));
+      if (plan.args.some((x) => /_(nvenc|qsv|amf)$/.test(x))) msg += ' Prueba a elegir «CPU rápida» en Velocidad.';
+      throw new Error(msg + ' Tienes los detalles en el «Registro de FFmpeg».');
+    }
+    const secs = (performance.now() - t0) / 1000;
+    setProgress(1);
+    showResult(st, plan.ext);
+    setStatus(`Listo en ${secs < 60 ? secs.toFixed(1) + ' s' : (secs / 60).toFixed(1) + ' min'}.`, 'ok');
+    S.dirty = false;
+  } catch (e) {
+    setStatus(e.message, 'err');
+  } finally {
+    S.busy = false; S.job = null;
+    refreshUI();
+  }
+}
+function showResult(st, ext) {
+  const box = $('#result');
+  const src = mediaURL(st.output) + '&v=' + Date.now();
+  const media = ext === 'gif' ? `<img src="${src}" alt="">` : ext === 'mp3' ? `<audio src="${src}" controls></audio>` : `<video src="${src}" controls playsinline preload="metadata"></video>`;
+  const pct = S.size ? Math.round(st.size / S.size * 100) : 0;
+  box.innerHTML = `${media}<div class="meta"><b>${fmtSize(st.size)}</b>${pct ? ` (${pct}% del original)` : ''}<br>${esc(st.output)}</div>
+    <div class="acts">
+      <button class="btn sm" data-act="reveal" title="Abrir la carpeta con el archivo seleccionado">📂 Mostrar</button>
+      <button class="btn sm" data-act="copy" title="Copiar el archivo para pegarlo en Teams, Slack, WhatsApp, el correo…">📋 Copiar archivo</button>
+      <button class="btn sm" data-act="play" title="Abrir con el reproductor de Windows">▶ Abrir</button>
+    </div>`;
+  box.querySelector('[data-act=reveal]').onclick = () => api('/api/reveal', { path: st.output }, '');
+  box.querySelector('[data-act=play]').onclick = () => api('/api/play', { path: st.output }, '');
+  box.querySelector('[data-act=copy]').onclick = async (e) => {
+    await api('/api/copyfile', { path: st.output }, '');
+    e.target.textContent = '✓ Copiado: pégalo donde quieras';
+  };
+  box.classList.remove('hidden');
+}
+$('#bExport').onclick = doExport;
+$('#bCancel').onclick = () => { if (S.job) api('/api/cancel', { id: S.job }, '').catch(() => {}); };
+
+boot();
+</script>
+</body>
+</html>
