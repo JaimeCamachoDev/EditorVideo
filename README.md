@@ -7,15 +7,27 @@ Editor de vídeo sencillo para Windows, pensado para las grabaciones de la **Xbo
 - Guarda en `Vídeos\Editados`, y con **Copiar archivo** lo pegas directamente en Teams, Slack, WhatsApp o el correo.
 - Sin instalar nada más: se compila con el `csc.exe` que trae Windows (.NET Framework 4.x) y la interfaz se abre en una ventana propia de Edge/Chrome.
 
-## Instalación
+## Instalación en otro PC
+
+Requisitos: Windows 10/11 con Edge o Chrome (ya vienen) y conexión a internet la primera vez.
+
+**Opción A: sin git**
+
+1. En GitHub pulsa **Code → Download ZIP**.
+2. Descomprímelo donde quieras que viva la app (por ejemplo `Documentos\EditorVideo`). La app se ejecuta desde esa carpeta, así que no la dejes en `Descargas` si sueles limpiarla.
+3. Doble clic en **`Instalar.bat`**.
+
+**Opción B: con git**
 
 ```powershell
 git clone https://github.com/JaimeCamachoDev/EditorVideo.git
 cd EditorVideo
-powershell -ExecutionPolicy Bypass -File instalar.ps1
+.\Instalar.bat
 ```
 
-El instalador descarga FFmpeg 8.0.1 ([gyan.dev](https://www.gyan.dev/ffmpeg/builds/)), compila `EditorVideo.exe` y crea accesos directos en el Escritorio, el menú Inicio y **Enviar a**.
+El instalador descarga FFmpeg 8.0.1 ([gyan.dev](https://www.gyan.dev/ffmpeg/builds/)), compila `EditorVideo.exe` con el compilador que trae Windows y crea accesos directos en el Escritorio, el menú Inicio y **Enviar a**. Tarda un par de minutos, sobre todo por la descarga.
+
+Para **actualizar** a una versión nueva: `git pull` (o descarga el ZIP otra vez encima) y vuelve a ejecutar `Instalar.bat`. Si mueves la carpeta, ejecútalo de nuevo para que los accesos directos apunten al sitio nuevo.
 
 > Se usa FFmpeg 8.0.1 porque las versiones 8.1 y posteriores exigen el driver NVIDIA 610 o superior para NVENC.
 
@@ -43,7 +55,7 @@ También puedes hacer clic derecho en cualquier vídeo → **Enviar a → Editor
 | `src/EditorVideo.cs` | Servidor local (solo `localhost`, protegido con token) que ejecuta FFmpeg, sirve el vídeo, lista grabaciones y abre los diálogos de Windows. Se cierra solo al cerrar la ventana. |
 | `app.html` | La interfaz. |
 | `src/build.ps1` | Compila el `.exe` (`-Shortcuts` crea también los accesos directos). |
-| `instalar.ps1` | Descarga FFmpeg y compila. |
+| `Instalar.bat` / `instalar.ps1` | Descarga FFmpeg, compila y crea los accesos directos. |
 
 Tras cambiar `app.html` basta con reabrir la app; tras cambiar `EditorVideo.cs`, vuelve a ejecutar `src\build.ps1`.
 
