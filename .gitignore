@@ -4,3 +4,6 @@ EditorVideo.exe
 
 # Preferencias locales
 config.json
+
+# Version portable generada con src/empaquetar.ps1
+dist/

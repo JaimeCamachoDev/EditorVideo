@@ -7,9 +7,18 @@ Editor de vídeo sencillo para Windows, pensado para las grabaciones de la **Xbo
 - Guarda en `Vídeos\Editados`, y con **Copiar archivo** lo pegas directamente en Teams, Slack, WhatsApp o el correo.
 - Sin instalar nada más: se compila con el `csc.exe` que trae Windows (.NET Framework 4.x) y la interfaz se abre en una ventana propia de Edge/Chrome.
 
-## Instalación en otro PC
+## Descarga (sin instalar nada)
 
-Requisitos: Windows 10/11 con Edge o Chrome (ya vienen) y conexión a internet la primera vez.
+1. Descarga **`EditorVideo-v…-portable-win64.zip`** desde [Releases](https://github.com/JaimeCamachoDev/EditorVideo/releases/latest).
+2. Descomprímelo donde quieras y abre **`EditorVideo.exe`**.
+
+Ya incluye FFmpeg. Si Windows muestra «Windows protegió su PC» (la app no está firmada), pulsa **Más información → Ejecutar de todas formas**. Con **`Crear accesos directos.bat`** lo añades al Escritorio, al menú Inicio y a «Enviar a».
+
+Requisitos: Windows 10/11 con Edge o Chrome (vienen de serie).
+
+## Instalar desde el código
+
+Descarga FFmpeg y compila la app en tu equipo. Útil si quieres modificarla. Necesita conexión a internet la primera vez.
 
 **Opción A: sin git**
 
@@ -56,6 +65,8 @@ También puedes hacer clic derecho en cualquier vídeo → **Enviar a → Editor
 | `app.html` | La interfaz. |
 | `src/build.ps1` | Compila el `.exe` (`-Shortcuts` crea también los accesos directos). |
 | `Instalar.bat` / `instalar.ps1` | Descarga FFmpeg, compila y crea los accesos directos. |
+| `src/empaquetar.ps1` | Genera el ZIP portable de Releases en `dist/` (por ejemplo `-Version 2.1.0`). |
+| `portable/` | Archivos extra que van en el ZIP portable (`LEEME.txt`, `Crear accesos directos.bat`). |
 
 Tras cambiar `app.html` basta con reabrir la app; tras cambiar `EditorVideo.cs`, vuelve a ejecutar `src\build.ps1`.
 
@@ -63,4 +74,4 @@ Registro de diagnóstico: `%LOCALAPPDATA%\EditorVideo\registro.txt`.
 
 ## Desinstalar
 
-Borra la carpeta del repositorio, `%LOCALAPPDATA%\EditorVideo` y los accesos directos «Editor de Vídeo» del Escritorio, del menú Inicio y de la carpeta Enviar a (`Win`+`R` → `shell:sendto`).
+Borra la carpeta de la app (o del repositorio), `%LOCALAPPDATA%\EditorVideo` y los accesos directos «Editor de Vídeo» del Escritorio, del menú Inicio y de la carpeta Enviar a (`Win`+`R` → `shell:sendto`).

@@ -1,0 +1,32 @@
+EDITOR DE VÍDEO (versión portable)
+==================================
+
+No hay que instalar nada:
+
+  1. Descomprime esta carpeta donde quieras (por ejemplo en Documentos).
+  2. Abre EditorVideo.exe.
+
+La primera vez Windows puede mostrar "Windows protegió su PC", porque la app no está
+firmada digitalmente: pulsa "Más información" y luego "Ejecutar de todas formas".
+
+Opcional: "Crear accesos directos.bat" añade el editor al Escritorio, al menú Inicio y
+al menú "Enviar a" (clic derecho sobre un vídeo).
+
+Uso con la Xbox Game Bar (Win+Alt+R)
+  - Deja el editor abierto mientras grabas: al parar, la grabación aparece en
+    "Grabaciones recientes" y se abre sola.
+  - Recorta con los tiradores azules o con las teclas I / O y pulsa Exportar (Ctrl+E).
+  - Se guarda en Vídeos\Editados. "Copiar archivo" lo deja listo para pegar en
+    Teams, Slack, WhatsApp o el correo.
+
+Atajos: Espacio reproducir · I/O inicio/fin · flechas fotograma a fotograma ·
+Shift+flechas 1 segundo · Ctrl+E exportar · Ctrl+O abrir.
+
+Requisitos: Windows 10/11 con Edge o Chrome (vienen de serie). Si tienes GPU NVIDIA,
+Intel o AMD, se usa para exportar mucho más rápido.
+
+Código fuente, novedades y problemas: https://github.com/JaimeCamachoDev/EditorVideo
+
+Licencias: el editor es MIT (LICENSE). FFmpeg 8.0.1 (build de gyan.dev) se distribuye
+bajo GPL v3 (ffmpeg\LICENSE.txt); su código fuente está en https://ffmpeg.org y
+https://www.gyan.dev/ffmpeg/builds/.
