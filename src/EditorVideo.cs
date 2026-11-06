@@ -27,7 +27,7 @@ class Settings
 
 class Job
 {
-    public string Id, Kind, Output, State = "running", Error;
+    public string Id, Kind, Output, Temp, State = "running", Error;
     public double Time;
     public long Size;
     public List<string> Log = new List<string>();
@@ -55,7 +55,7 @@ static class App
     static string Token;
     static HttpListener Listener;
     static Settings Cfg;
-    static DateTime LastBeat = DateTime.Now, ByeAt = DateTime.MinValue;
+    static DateTime LastBeat = DateTime.UtcNow, ByeAt = DateTime.MinValue;
     static bool NoBrowser;
 
     [STAThread]
@@ -80,6 +80,7 @@ static class App
         FFprobe = FindTool("ffprobe.exe");
         if (FFmpeg != null) { FFversion = RunCapture(FFmpeg, "-hide_banner -version", 5000).Split('\n')[0].Trim(); DetectHw(); }
         Cfg = LoadSettings();
+        if (created) CleanLeftovers();
 
         if (!StartListener(fixedPort))
         {
@@ -95,15 +96,37 @@ static class App
         if (!NoBrowser) LaunchWindow();
 
         // Se cierra cuando se cierra la ventana (o si deja de dar señales mucho tiempo)
+        DateTime prev = DateTime.UtcNow;
+        bool waitLogged = false;
         while (true)
         {
             Thread.Sleep(1000);
+            DateTime now = DateTime.UtcNow;
+            // vuelta de una suspensión: el reloj ha saltado, se da tiempo a la ventana para volver a dar señales
+            if ((now - prev).TotalSeconds > 30) LastBeat = now;
+            prev = now;
             if (NoBrowser) continue;
-            double sinceBeat = (DateTime.Now - LastBeat).TotalSeconds;
-            bool bye = ByeAt != DateTime.MinValue && sinceBeat > 4 && (DateTime.Now - ByeAt).TotalSeconds > 4;
-            if (bye || sinceBeat > 600) { Log(bye ? "ventana cerrada: salgo" : "sin señales de la ventana: salgo"); break; }
+            double sinceBeat = (now - LastBeat).TotalSeconds;
+            bool bye = ByeAt != DateTime.MinValue && sinceBeat > 4 && (now - ByeAt).TotalSeconds > 4;
+            if (bye || sinceBeat > 600)
+            {
+                // con una exportación en marcha no se sale: se espera a que termine y se guarde
+                bool exporting;
+                lock (Lk) exporting = Jobs.Values.Any(j => j.Kind != "proxy" && j.State == "running");
+                if (exporting) { if (!waitLogged) { Log("ventana cerrada con una exportación en marcha: espero a que termine"); waitLogged = true; } continue; }
+                Log(bye ? "ventana cerrada: salgo" : "sin señales de la ventana: salgo");
+                break;
+            }
         }
-        lock (Lk) foreach (var j in Jobs.Values) KillJob(j);
+        List<Job> left;
+        lock (Lk) left = Jobs.Values.ToList();
+        foreach (var j in left)
+        {
+            if (j.State != "running") continue;
+            j.Cancelled = true; KillJob(j);
+            try { if (j.Proc != null) j.Proc.WaitForExit(3000); } catch { }
+            TryDelete(j.Temp);
+        }
         try { File.Delete(PortFile); } catch { }
         GC.KeepAlive(mutex);
     }
@@ -159,19 +182,33 @@ static class App
     static int LastExit;
     static string RunCapture(string exe, string args, int timeoutMs)
     {
+        string err;
+        string o = RunCapture(exe, args, timeoutMs, out err);
+        return o + err;
+    }
+
+    // Devuelve la salida estándar; los errores y avisos van aparte (stderr)
+    static string RunCapture(string exe, string args, int timeoutMs, out string stderr)
+    {
         try
         {
-            var psi = new ProcessStartInfo(exe, args) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            var psi = new ProcessStartInfo(exe, args)
+            {
+                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
+            };
             using (var p = Process.Start(psi))
             {
-                var err = p.StandardError.ReadToEndAsync();
-                string o = p.StandardOutput.ReadToEnd();
-                if (!p.WaitForExit(timeoutMs)) { try { p.Kill(); } catch { } LastExit = -1; return "timeout"; }
+                // las dos salidas se leen a la vez para que el tiempo límite funcione aunque el proceso se cuelgue
+                var outT = p.StandardOutput.ReadToEndAsync();
+                var errT = p.StandardError.ReadToEndAsync();
+                if (!p.WaitForExit(timeoutMs)) { try { p.Kill(); } catch { } LastExit = -1; stderr = "timeout"; return ""; }
                 LastExit = p.ExitCode;
-                return o + err.Result;
+                stderr = errT.Result;
+                return outT.Result;
             }
         }
-        catch (Exception ex) { LastExit = -1; return ex.Message; }
+        catch (Exception ex) { LastExit = -1; stderr = ex.Message; return ""; }
     }
 
     static bool StartListener(int fixedPort)
@@ -194,7 +231,7 @@ static class App
 
     static void LaunchWindow()
     {
-        string url = "http://localhost:" + Port + "/";
+        string url = "http://localhost:" + Port + "/?k=" + Token;
         string pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         string pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         string la = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -253,31 +290,42 @@ static class App
             // Evita que otras webs abiertas en el navegador usen el servidor
             if (host != "localhost:" + Port && host != "127.0.0.1:" + Port) { Send(c, 403, "text/plain", "Prohibido"); return; }
             string path = req.Url.AbsolutePath;
-            var q = req.QueryString;
+            var q = ParseQuery(req.RawUrl);
+            // El token se exige en todo, también en la página: la ventana lo recibe en la URL (?k=)
+            if (q["k"] != Token) { Send(c, 403, "text/plain", "Token no válido"); return; }
             if (path == "/" || path == "/index.html")
             {
-                string html = File.ReadAllText(Path.Combine(Dir, "app.html"), Encoding.UTF8).Replace("__TOKEN__", Token);
+                string html = File.ReadAllText(Path.Combine(Dir, "app.html"), Encoding.UTF8);
                 Send(c, 200, "text/html; charset=utf-8", html);
                 return;
             }
-            if (q["k"] != Token) { Send(c, 403, "text/plain", "Token no válido"); return; }
-            LastBeat = DateTime.Now;
+            LastBeat = DateTime.UtcNow;
 
             switch (path)
             {
                 case "/api/state": SendJson(c, State()); return;
                 case "/api/events": SendJson(c, Events()); return;
-                case "/api/bye": ByeAt = DateTime.Now; Log("aviso de cierre de la ventana"); SendJson(c, true); return;
+                case "/api/bye": ByeAt = DateTime.UtcNow; Log("aviso de cierre de la ventana"); SendJson(c, true); return;
                 case "/api/open":
                     {
                         string p = q["path"];
                         lock (Lk) if (!string.IsNullOrEmpty(p)) OpenQueue.Add(p);
                         // si la ventana estaba cerrada, la volvemos a abrir
-                        if (!NoBrowser && (DateTime.Now - LastBeatFromUi).TotalSeconds > 5) LaunchWindow();
+                        if (!NoBrowser && (DateTime.UtcNow - LastBeatFromUi).TotalSeconds > 5) LaunchWindow();
                         SendJson(c, true); return;
                     }
                 case "/api/recordings": SendJson(c, Recordings()); return;
-                case "/api/probe": SendRaw(c, "application/json", RunCapture(FFprobe, "-v error -print_format json -show_format -show_streams " + Q(CheckFile(q["path"])), 30000)); return;
+                case "/api/probe":
+                    {
+                        // solo la salida estándar es JSON; los avisos de ffprobe van al registro
+                        string file = CheckFile(q["path"]), err;
+                        string o = RunCapture(FFprobe, "-v error -print_format json -show_format -show_streams " + Q(file), 30000, out err);
+                        string aviso = Regex.Replace(err.Trim(), @"\s*[\r\n]+\s*", " / ");
+                        if (aviso.Length > 0) Log("ffprobe " + Path.GetFileName(file) + ": " + aviso.Substring(0, Math.Min(300, aviso.Length)));
+                        if (o.Trim().Length == 0) SendJson(c, new { error = err.Trim() });
+                        else SendRaw(c, "application/json; charset=utf-8", o);
+                        return;
+                    }
                 case "/api/thumb": Thumb(c, CheckFile(q["path"]), Num(q["t"], 0), (int)Num(q["h"], 90)); return;
                 case "/media": ServeFile(c, CheckFile(q["path"])); return;
                 case "/api/pick": SendJson(c, new { path = Pick(q["kind"]) }); return;
@@ -303,7 +351,7 @@ static class App
                         if (j != null) { j.Cancelled = true; KillJob(j); }
                         SendJson(c, true); return;
                     }
-                case "/api/reveal": Process.Start("explorer.exe", "/select," + Q(CheckFile(q["path"]))); SendJson(c, true); return;
+                case "/api/reveal": Process.Start("explorer.exe", "/select,\"" + CheckFile(q["path"]) + "\""); SendJson(c, true); return;
                 case "/api/openfolder": Directory.CreateDirectory(Cfg.OutputDir); Process.Start("explorer.exe", Q(Cfg.OutputDir)); SendJson(c, true); return;
                 case "/api/play": Process.Start(CheckFile(q["path"])); SendJson(c, true); return;
                 case "/api/copyfile": CopyFileToClipboard(CheckFile(q["path"])); SendJson(c, true); return;
@@ -333,8 +381,8 @@ static class App
 
     static object Events()
     {
-        LastBeatFromUi = DateTime.Now;
-        if (ByeAt != DateTime.MinValue && (DateTime.Now - ByeAt).TotalSeconds > 2) ByeAt = DateTime.MinValue;
+        LastBeatFromUi = DateTime.UtcNow;
+        if (ByeAt != DateTime.MinValue && (DateTime.UtcNow - ByeAt).TotalSeconds > 2) ByeAt = DateTime.MinValue;
         List<string> open;
         lock (Lk) { open = new List<string>(OpenQueue); OpenQueue.Clear(); }
         return new { open = open };
@@ -344,6 +392,23 @@ static class App
     {
         if (string.IsNullOrEmpty(p) || !File.Exists(p)) throw new FileNotFoundException("No se encuentra el archivo: " + p);
         return Path.GetFullPath(p);
+    }
+
+    // req.QueryString decodifica con la codificación ANSI del sistema (sin charset en un GET)
+    // y estropea las rutas con tildes; el navegador las manda en UTF-8
+    static System.Collections.Specialized.NameValueCollection ParseQuery(string rawUrl)
+    {
+        var nv = new System.Collections.Specialized.NameValueCollection();
+        int qi = rawUrl.IndexOf('?');
+        if (qi < 0) return nv;
+        foreach (var part in rawUrl.Substring(qi + 1).Split('&'))
+        {
+            if (part.Length == 0) continue;
+            int i = part.IndexOf('=');
+            string k = i < 0 ? part : part.Substring(0, i), v = i < 0 ? "" : part.Substring(i + 1);
+            nv.Add(Uri.UnescapeDataString(k.Replace('+', ' ')), Uri.UnescapeDataString(v.Replace('+', ' ')));
+        }
+        return nv;
     }
 
     static double Num(string s, double def)
@@ -439,9 +504,12 @@ static class App
                 using (var ms = new MemoryStream())
                 {
                     proc.StandardError.ReadToEndAsync();
-                    proc.StandardOutput.BaseStream.CopyTo(ms);
-                    proc.WaitForExit(15000);
-                    data = ms.ToArray();
+                    // lectura asíncrona para que el tiempo límite funcione aunque FFmpeg se cuelgue
+                    var copy = proc.StandardOutput.BaseStream.CopyToAsync(ms);
+                    bool exited = proc.WaitForExit(15000);
+                    if (!exited) { try { proc.Kill(); } catch { } }
+                    try { copy.Wait(2000); } catch { }
+                    data = exited && copy.Status == System.Threading.Tasks.TaskStatus.RanToCompletion ? ms.ToArray() : new byte[0];
                 }
             }
             finally { ThumbSem.Release(); }
@@ -520,7 +588,8 @@ static class App
         Directory.CreateDirectory(dir);
         string safe = Regex.Replace(Path.GetFileName(name ?? "archivo"), "[\\\\/:*?\"<>|]", "_");
         string dest = Unique(Path.Combine(dir, safe));
-        using (var fs = File.Create(dest)) req.InputStream.CopyTo(fs, 1 << 20);
+        try { using (var fs = File.Create(dest)) req.InputStream.CopyTo(fs, 1 << 20); }
+        catch { TryDelete(dest); throw; } // no se deja una copia a medias
         return dest;
     }
 
@@ -638,7 +707,7 @@ static class App
         string muxer = ext == "mp4" ? "mp4" : ext == "webm" ? "webm" : ext == "gif" ? "gif" : ext == "mp3" ? "mp3" : ext;
         args.Insert(outIdx, "-f"); args.Insert(outIdx + 1, muxer);
 
-        var job = new Job { Id = Guid.NewGuid().ToString("N"), Kind = kind, Output = output };
+        var job = new Job { Id = Guid.NewGuid().ToString("N"), Kind = kind, Output = output, Temp = tmpOut };
         var psi = new ProcessStartInfo(FFmpeg, string.Join(" ", args.Select(Q)))
         {
             UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true,
@@ -662,7 +731,7 @@ static class App
         };
         p.Exited += (s, e) =>
         {
-            Thread.Sleep(200); // deja terminar de leer la salida
+            try { p.WaitForExit(); } catch { } // espera a que se termine de leer la salida
             int code = -1;
             try { code = p.ExitCode; } catch { }
             if (job.Cancelled) { job.State = "cancelled"; TryDelete(tmpOut); return; }
@@ -727,6 +796,18 @@ static class App
     static void CleanOld(string dir, int keep)
     {
         try { foreach (var f in new DirectoryInfo(dir).GetFiles().OrderByDescending(f => f.LastWriteTimeUtc).Skip(keep)) f.Delete(); } catch { }
+    }
+
+    // Restos de una sesión anterior que se cerró a medias: exportaciones parciales
+    // ("nombre.mp4.parcial.mp4") y los vídeos importados al arrastrarlos a la ventana
+    static void CleanLeftovers()
+    {
+        var parcial = new Regex(@"\.(\w+)\.parcial\.\1$", RegexOptions.IgnoreCase);
+        foreach (var d in new[] { Cfg.OutputDir, Path.Combine(DataDir, "vistas_previas") })
+        {
+            try { foreach (var f in Directory.GetFiles(d, "*.parcial.*")) if (parcial.IsMatch(f)) TryDelete(f); } catch { }
+        }
+        try { foreach (var f in Directory.GetFiles(Path.Combine(DataDir, "importados"))) TryDelete(f); } catch { }
     }
 
     // Entrecomillado de argumentos según las reglas de Windows

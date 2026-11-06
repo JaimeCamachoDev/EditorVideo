@@ -5,12 +5,11 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $root = Split-Path $PSScriptRoot -Parent
 
-# FFmpeg (se descarga si falta) y compilacion del .exe
-if (-not (Test-Path (Join-Path $root 'ffmpeg\ffmpeg.exe'))) {
-  & (Join-Path $root 'instalar.ps1') -SinAccesos
-} else {
-  & (Join-Path $PSScriptRoot 'build.ps1')
-}
+# FFmpeg (instalar.ps1 lo descarga si falta o si cambia de version) y compilacion del .exe
+$global:LASTEXITCODE = 0
+& (Join-Path $root 'instalar.ps1') -SinAccesos
+# instalar.ps1 captura sus errores y sale con 'exit 1': sin esta comprobacion se empaquetaria un .exe viejo
+if ($LASTEXITCODE -ne 0) { throw "Ha fallado instalar.ps1 (codigo $LASTEXITCODE): no se genera el paquete." }
 
 $dist = Join-Path $root 'dist'
 $stage = Join-Path $dist 'EditorVideo'

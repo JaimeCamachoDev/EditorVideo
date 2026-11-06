@@ -260,7 +260,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 <div class="fatal hidden" id="fatal"></div>
 
 <script>
-const K = '__TOKEN__';
+const K = new URLSearchParams(location.search).get('k') || ''; // el servidor abre la ventana con ?k=token
 const $ = (s) => document.querySelector(s);
 const vid = $('#vid'), still = $('#still');
 const aud = new Audio();
@@ -365,6 +365,8 @@ async function heartbeat() {
   } catch (_) {}
   setTimeout(heartbeat, 1000);
 }
+// Cerrar la ventana a mitad de una exportación pide confirmación (si se cierra igual, el editor la termina antes de salir)
+window.addEventListener('beforeunload', (e) => { if (S.busy) { e.preventDefault(); e.returnValue = ''; } });
 window.addEventListener('pagehide', () => navigator.sendBeacon(url('/api/bye')));
 
 /* ================= grabaciones ================= */

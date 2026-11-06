@@ -1,4 +1,4 @@
-# Compila EditorVideo.exe con el compilador de C# que trae Windows (.NET Framework 4.x).
+﻿# Compila EditorVideo.exe con el compilador de C# que trae Windows (.NET Framework 4.x).
 # Uso:  powershell -ExecutionPolicy Bypass -File build.ps1 [-Shortcuts]
 param([switch]$Shortcuts)
 $ErrorActionPreference = 'Stop'
@@ -27,10 +27,15 @@ if (-not (Test-Path $ico)) {
   $fs = [System.IO.File]::Create($ico); $icon.Save($fs); $fs.Close()
 }
 
+# Si la app está abierta, el .exe está bloqueado y csc no puede sobrescribirlo
+$exe = Join-Path $app 'EditorVideo.exe'
+$running = Get-Process EditorVideo -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe }
+if ($running) { throw "El Editor de Vídeo está abierto ($exe). Ciérralo y vuelve a compilar." }
+
 & $csc /nologo /codepage:65001 /optimize+ /target:winexe /platform:anycpu "/out:$app\EditorVideo.exe" "/win32icon:$ico" `
   /r:System.Web.Extensions.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll `
   (Join-Path $src 'EditorVideo.cs')
-if ($LASTEXITCODE -ne 0) { throw "Error de compilación" }
+if ($LASTEXITCODE -ne 0) { throw "Error de compilación (csc devolvió $LASTEXITCODE; el detalle está en los mensajes de arriba)" }
 Write-Host "Compilado: $app\EditorVideo.exe"
 
 if ($Shortcuts) {
